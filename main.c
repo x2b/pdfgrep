@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <gtk/gtk.h>
 #include <poppler.h>
+#include <stdlib.h>
 
 char ESC=27;
 
@@ -80,6 +81,20 @@ cleanup:
   g_free(uri);
 }
 
+typedef struct argument
+{
+  const char *filename;
+  GRegex *regex;
+  pthread_t worker;
+} argument;
+
+void *find_par(void *ptr)
+{
+  argument *arg = (argument*) ptr;
+  find(arg->filename, arg->regex);
+  return 0;
+}
+
 int main(int argc, char **argv)
 {
   const char      *filename;
@@ -106,10 +121,28 @@ int main(int argc, char **argv)
     return 1;
   }
   
-  for(i = 2; i < argc; ++i)
-    find(argv[i], regex);
+  argc -= 2;
+  argv += 2;
+  
+  argument *args = (argument*) malloc(argc* sizeof(argument));
+  
+  for(i = 0; i < argc; ++i)
+  {
+    argument *cur = args + i;
+    cur->filename = argv[i];
+    cur->regex = regex;
+    //find(argv[i], regex);
+    pthread_create(&cur->worker, NULL, find_par, cur);
+  }
+  
+  for(i = 0; i < argc; ++i)
+  {
+    pthread_join(args[i].worker, NULL);
+  }
   
   g_regex_unref(regex);
+  
+  free(args);
 
   return 0;
 }
