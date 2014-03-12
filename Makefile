@@ -1,5 +1,5 @@
-CFLAGS=`pkg-config --cflags poppler-glib gtk+-2.0` -O0 -g
-LDFLAGS=`pkg-config --libs poppler-glib gtk+-2.0` -lpthread
+CFLAGS=`pkg-config --cflags poppler-glib glib-2.0`
+LDFLAGS=`pkg-config --libs poppler-glib glib-2.0`
 
 main: main.o
 

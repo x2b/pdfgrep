@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <gtk/gtk.h>
+#include <glib.h>
 #include <poppler.h>
 #include <stdlib.h>
 
@@ -27,11 +27,11 @@ void find(const char *filename, GRegex *regex)
   GMatchInfo      *match_info;
   gchar           *text;
   
-  file = g_file_new_for_commandline_arg (filename);
-  uri = g_file_get_uri (file);
-  g_object_unref (file);
+  file = g_file_new_for_commandline_arg(filename);
+  uri = g_file_get_uri(file);
+  g_object_unref(file);
 
-  if(!(doc = poppler_document_new_from_file (uri, NULL, &error)))
+  if(!(doc = poppler_document_new_from_file(uri, NULL, &error)))
   {
     fprintf(stderr, "Could not open file %s: %s\n",
             filename, error->message);
@@ -85,14 +85,12 @@ typedef struct argument
 {
   const char *filename;
   GRegex *regex;
-  pthread_t worker;
 } argument;
 
-void *find_par(void *ptr)
+void find_par(gpointer data, gpointer user_data)
 {
-  argument *arg = (argument*) ptr;
+  argument *arg = (argument*) data;
   find(arg->filename, arg->regex);
-  return 0;
 }
 
 int main(int argc, char **argv)
@@ -101,8 +99,8 @@ int main(int argc, char **argv)
   GError          *error = NULL;
   GRegex          *regex;
   int              i;
-
-  gtk_init(&argc, &argv);
+  GThreadPool     *workers;
+  argument        *args;
 
   if(argc < 3)
   {
@@ -124,24 +122,40 @@ int main(int argc, char **argv)
   argc -= 2;
   argv += 2;
   
-  argument *args = (argument*) malloc(argc* sizeof(argument));
+  args = (argument*) malloc(argc* sizeof(argument));
+  
+  workers = g_thread_pool_new((GFunc) find_par, NULL,
+                              g_get_num_processors(), TRUE, &error);
+  
+  if(error)
+  {
+    fprintf(stderr, "Could not create thread pool: %s\n",
+            error->message);
+    g_error_free(error);
+    return 1;
+  }
   
   for(i = 0; i < argc; ++i)
   {
     argument *cur = args + i;
     cur->filename = argv[i];
     cur->regex = regex;
-    //find(argv[i], regex);
-    pthread_create(&cur->worker, NULL, find_par, cur);
+    
+    g_thread_pool_push(workers, cur, &error);
+    
+    if(error)
+    {
+      fprintf(stderr, "Could not push job to thread pool: %s\n",
+              error->message);
+      g_error_free(error);
+      return 1;
+    }
   }
   
-  for(i = 0; i < argc; ++i)
-  {
-    pthread_join(args[i].worker, NULL);
-  }
+  // this joins all threads...
+  g_thread_pool_free(workers, FALSE, TRUE);
   
   g_regex_unref(regex);
-  
   free(args);
 
   return 0;
